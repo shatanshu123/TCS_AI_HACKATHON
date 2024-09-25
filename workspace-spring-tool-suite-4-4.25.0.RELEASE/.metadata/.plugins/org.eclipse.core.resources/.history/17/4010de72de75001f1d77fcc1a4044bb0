@@ -1,0 +1,5 @@
+package com.exam.examserver.models;
+
+public class UserRole {
+
+}
