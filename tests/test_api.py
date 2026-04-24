@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from app import create_app
@@ -75,3 +76,37 @@ def test_missing_total_pdf_needs_review():
     invoice = response.get_json()["invoices"][0]
     assert invoice["status"] == "needs_review"
     assert any(error["field"] == "total_amount" for error in invoice["validation"]["errors"])
+
+
+def test_batch_invoice_uploads_in_background():
+    app = create_app(TestConfig)
+    client = app.test_client()
+    sample_pdf = Config.BASE_DIR / "sample-dataset" / "invoices" / "invoice-001-standard.pdf"
+
+    with sample_pdf.open("rb") as invoice_file:
+        response = client.post(
+            "/api/invoices/batch",
+            data={"files": (invoice_file, "invoice-001-standard.pdf")},
+            content_type="multipart/form-data",
+        )
+
+    assert response.status_code == 202
+    payload = response.get_json()
+    assert payload["status"] == "queued"
+    assert payload["total_files"] == 1
+    job_id = payload["job_id"]
+
+    status = None
+    for _ in range(30):
+        status_response = client.get(f"/api/invoices/batch/{job_id}")
+        assert status_response.status_code == 200
+        status = status_response.get_json()
+        if status["status"] == "finished":
+            break
+        time.sleep(0.1)
+
+    assert status is not None
+    assert status["status"] == "finished"
+    assert status["completed"] == 1
+    assert len(status["results"]) == 1
+    assert status["results"][0]["status"] == "completed"

@@ -4,6 +4,7 @@ import re
 import uuid
 from io import BytesIO
 from pathlib import Path
+from threading import Lock, Thread
 
 from flask import Blueprint, current_app, jsonify, request, send_file
 from werkzeug.utils import secure_filename
@@ -19,7 +20,10 @@ from app.services.ocr import OcrService
 from app.services.ocr_confidence import OcrConfidenceAnalyzer
 from app.services.pii_masker import PiiMasker
 from app.services.validator import InvoiceValidator
-from app.storage import get_invoice, get_invoice_file, insert_invoice, list_invoices, update_invoice
+from app.storage import get_invoice, get_invoice_file, insert_invoice, list_invoices, update_invoice, utc_now
+
+BATCH_JOBS = {}
+BATCH_JOB_LOCK = Lock()
 
 
 def _is_invoice_document(ocr_text):
@@ -108,6 +112,72 @@ def _is_invoice_document(ocr_text):
     return True, "Document appears to be a valid invoice"
 
 
+def _guess_content_type(original_filename, mimetype):
+    return mimetype or mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
+
+
+def _create_batch_job(total):
+    job_id = str(uuid.uuid4())
+    job = {
+        "id": job_id,
+        "status": "queued",
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+        "total": total,
+        "completed": 0,
+        "results": [],
+    }
+    with BATCH_JOB_LOCK:
+        BATCH_JOBS[job_id] = job
+    return job_id
+
+
+def _get_batch_job(job_id):
+    with BATCH_JOB_LOCK:
+        return BATCH_JOBS.get(job_id)
+
+
+def _update_batch_job(job_id, **updates):
+    with BATCH_JOB_LOCK:
+        job = BATCH_JOBS.get(job_id)
+        if not job:
+            return None
+        job.update(updates)
+        job["updated_at"] = utc_now()
+        return job
+
+
+def _run_batch_job(job_id, uploads, config):
+    _update_batch_job(job_id, status="processing")
+
+    for upload in uploads:
+        try:
+            invoice_result = _process_file_payload(
+                config,
+                str(uuid.uuid4()),
+                upload["filename"],
+                upload["bytes"],
+                upload["content_type"],
+            )
+        except Exception as exc:
+            invoice_result = {
+                "id": str(uuid.uuid4()),
+                "original_filename": upload["filename"],
+                "status": "failed",
+                "error": str(exc),
+            }
+
+        with BATCH_JOB_LOCK:
+            job = BATCH_JOBS.get(job_id)
+            if job is None:
+                break
+            job["results"].append(invoice_result)
+            job["completed"] += 1
+            job["updated_at"] = utc_now()
+
+    _update_batch_job(job_id, status="finished")
+
+
 api = Blueprint("api", __name__)
 
 
@@ -129,6 +199,53 @@ def upload_invoices():
         processed.append(_process_upload(file_storage))
 
     return jsonify({"count": len(processed), "invoices": processed}), 201
+
+
+@api.post("/api/invoices/batch")
+def upload_invoices_batch():
+    files = request.files.getlist("files") or request.files.getlist("file")
+    if not files:
+        return jsonify({"error": "Upload at least one invoice file using the 'files' field."}), 400
+
+    uploads = []
+    for file_storage in files:
+        if not file_storage.filename:
+            continue
+        original_filename = secure_filename(file_storage.filename)
+        uploads.append(
+            {
+                "filename": original_filename,
+                "bytes": file_storage.read(),
+                "content_type": _guess_content_type(original_filename, file_storage.mimetype),
+            }
+        )
+
+    if not uploads:
+        return jsonify({"error": "No valid files were provided."}), 400
+
+    job_id = _create_batch_job(len(uploads))
+    config = {
+        "DATABASE_PATH": current_app.config["DATABASE_PATH"],
+        "UPLOAD_DIR": current_app.config["UPLOAD_DIR"],
+        "TEXT_DIR": current_app.config["TEXT_DIR"],
+        "MASK_DIR": current_app.config["MASK_DIR"],
+        "LLM_PROVIDER": current_app.config["LLM_PROVIDER"],
+        "OPENAI_MODEL": current_app.config["OPENAI_MODEL"],
+        "GENAILAB_MODEL": current_app.config["GENAILAB_MODEL"],
+        "GENAILAB_BASE_URL": current_app.config["GENAILAB_BASE_URL"],
+        "GENAILAB_VERIFY_SSL": current_app.config["GENAILAB_VERIFY_SSL"],
+    }
+    Thread(target=_run_batch_job, args=(job_id, uploads, config), daemon=True).start()
+
+    return jsonify({"job_id": job_id, "status": "queued", "total_files": len(uploads)}), 202
+
+
+@api.get("/api/invoices/batch/<job_id>")
+def get_batch_job_status(job_id):
+    job = _get_batch_job(job_id)
+    if job is None:
+        return jsonify({"error": "Batch job not found."}), 404
+    return jsonify(job)
 
 
 @api.get("/api/invoices")
@@ -369,10 +486,21 @@ def get_ui_confidence_view(invoice_id):
 
 
 def _process_upload(file_storage):
-    invoice_id = str(uuid.uuid4())
     original_filename = secure_filename(file_storage.filename)
+    file_bytes = file_storage.read()
+    content_type = _guess_content_type(original_filename, file_storage.mimetype)
+    return _process_file_payload(
+        current_app.config,
+        str(uuid.uuid4()),
+        original_filename,
+        file_bytes,
+        content_type,
+    )
+
+
+def _process_file_payload(config, invoice_id, original_filename, file_bytes, content_type):
     suffix = Path(original_filename).suffix.lower().lstrip(".")
-    if suffix not in current_app.config["ALLOWED_EXTENSIONS"]:
+    if suffix not in config["ALLOWED_EXTENSIONS"]:
         return {
             "id": invoice_id,
             "original_filename": original_filename,
@@ -381,14 +509,9 @@ def _process_upload(file_storage):
         }
 
     stored_filename = f"{invoice_id}-{original_filename}"
-    upload_path = current_app.config["UPLOAD_DIR"] / stored_filename
-    file_storage.save(upload_path)
-    file_blob = upload_path.read_bytes()
-    content_type = (
-        file_storage.mimetype
-        or mimetypes.guess_type(original_filename)[0]
-        or "application/octet-stream"
-    )
+    upload_path = config["UPLOAD_DIR"] / stored_filename
+    upload_path.write_bytes(file_bytes)
+    file_blob = file_bytes
 
     # Extract OCR text
     ocr_text, warnings = OcrService().extract_text(upload_path)
@@ -396,10 +519,9 @@ def _process_upload(file_storage):
     # Validate if this is actually an invoice document
     is_invoice, validation_reason = _is_invoice_document(ocr_text)
     if not is_invoice:
-        # Clean up temporary files and return error without storing in DB
         try:
             upload_path.unlink(missing_ok=True)
-        except:
+        except OSError:
             pass
 
         return {
@@ -410,22 +532,22 @@ def _process_upload(file_storage):
         }
 
     # Continue with processing only if it's a valid invoice
-    ocr_text_path = current_app.config["TEXT_DIR"] / f"{invoice_id}.txt"
+    ocr_text_path = config["TEXT_DIR"] / f"{invoice_id}.txt"
     ocr_text_path.write_text(ocr_text, encoding="utf-8")
 
     masker = PiiMasker()
     masking_result = masker.mask(ocr_text)
-    masked_text_path = current_app.config["MASK_DIR"] / f"{invoice_id}.masked.txt"
-    pii_map_path = current_app.config["MASK_DIR"] / f"{invoice_id}.pii-map.json"
+    masked_text_path = config["MASK_DIR"] / f"{invoice_id}.masked.txt"
+    pii_map_path = config["MASK_DIR"] / f"{invoice_id}.pii-map.json"
     masked_text_path.write_text(masking_result.masked_text, encoding="utf-8")
     pii_map_path.write_text(json.dumps(masking_result.pii_map, indent=2), encoding="utf-8")
 
     try:
         extraction = InvoiceLlmClient(
-            provider=current_app.config["LLM_PROVIDER"],
-            model=_configured_model(),
-            base_url=current_app.config["GENAILAB_BASE_URL"],
-            verify_ssl=current_app.config["GENAILAB_VERIFY_SSL"],
+            provider=config["LLM_PROVIDER"],
+            model=config["OPENAI_MODEL"] if config["LLM_PROVIDER"] != "genailab" else config["GENAILAB_MODEL"],
+            base_url=config["GENAILAB_BASE_URL"],
+            verify_ssl=config["GENAILAB_VERIFY_SSL"],
             masker=masker,
         ).extract_invoice(masking_result.masked_text)
     except LlmPayloadRejected as exc:
@@ -442,7 +564,7 @@ def _process_upload(file_storage):
 
     status = "completed" if validation["valid"] else "needs_review"
     invoice = insert_invoice(
-        current_app.config["DATABASE_PATH"],
+        config["DATABASE_PATH"],
         {
             "id": invoice_id,
             "original_filename": original_filename,
