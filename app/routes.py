@@ -1,5 +1,6 @@
 import json
 import mimetypes
+import re
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -19,6 +20,92 @@ from app.services.ocr_confidence import OcrConfidenceAnalyzer
 from app.services.pii_masker import PiiMasker
 from app.services.validator import InvoiceValidator
 from app.storage import get_invoice, get_invoice_file, insert_invoice, list_invoices, update_invoice
+
+
+def _is_invoice_document(ocr_text):
+    """
+    Validate if the extracted text appears to be from an invoice document.
+    Returns (is_invoice, reason) tuple.
+    """
+    if not ocr_text or not ocr_text.strip():
+        return False, "No text could be extracted from the document"
+
+    text_lower = ocr_text.lower()
+    lines = [line.strip() for line in ocr_text.splitlines() if line.strip()]
+
+    # Check for invoice keywords
+    invoice_keywords = [
+        'invoice', 'bill', 'receipt', 'tax invoice', 'proforma invoice',
+        'purchase order', 'sales order', 'quotation', 'estimate'
+    ]
+
+    has_invoice_keyword = any(keyword in text_lower for keyword in invoice_keywords)
+    if not has_invoice_keyword:
+        return False, "Document does not contain invoice-related keywords"
+
+    # Check for invoice number patterns
+    invoice_number_patterns = [
+        r'\binvoice\s*(?:no|number|#)\s*[:#-]?\s*[A-Z0-9][A-Z0-9/-]{1,40}',
+        r'\binv\s*(?:no|#)\s*[:#-]?\s*[A-Z0-9][A-Z0-9/-]{1,40}',
+        r'\bINV[-/][A-Z0-9][A-Z0-9/-]{2,40}\b',
+        r'\bbill\s*(?:no|number|#)\s*[:#-]?\s*[A-Z0-9][A-Z0-9/-]{1,40}',
+    ]
+
+    has_invoice_number = any(re.search(pattern, text_lower, re.IGNORECASE) for pattern in invoice_number_patterns)
+    if not has_invoice_number:
+        # Check for alternative patterns like PO numbers, quotation numbers
+        alt_patterns = [
+            r'\bpo\s*(?:no|number|#)\s*[:#-]?\s*[A-Z0-9][A-Z0-9/-]{1,40}',
+            r'\bquotation\s*(?:no|number|#)\s*[:#-]?\s*[A-Z0-9][A-Z0-9/-]{1,40}',
+            r'\border\s*(?:no|number|#)\s*[:#-]?\s*[A-Z0-9][A-Z0-9/-]{1,40}',
+        ]
+        has_alt_number = any(re.search(pattern, text_lower, re.IGNORECASE) for pattern in alt_patterns)
+        if not has_alt_number:
+            return False, "Document does not contain invoice/order number"
+
+    # Check for monetary amounts
+    amount_patterns = [
+        r'\b(?:total|amount|grand total|net amount|subtotal)\b[^\dA-Z$-]{0,20}(?:INR|Rs\.?|USD|\$)?\s*[0-9][0-9,]*(?:\.\d{1,2})?',
+        r'(?:INR|Rs\.?|USD|\$)\s*[0-9][0-9,]*(?:\.\d{1,2})?',
+        r'\b[0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{1,2})?\s*(?:INR|Rs\.?|USD|\$)',
+    ]
+
+    has_amount = any(re.search(pattern, text_lower, re.IGNORECASE) for pattern in amount_patterns)
+    if not has_amount:
+        return False, "Document does not contain monetary amounts"
+
+    # Check for date patterns
+    date_patterns = [
+        r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b',
+        r'\b\d{4}-\d{2}-\d{2}\b',
+        r'\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b',
+    ]
+
+    has_date = any(re.search(pattern, text_lower, re.IGNORECASE) for pattern in date_patterns)
+    if not has_date:
+        return False, "Document does not contain date information"
+
+    # Check for vendor/supplier information
+    vendor_indicators = [
+        'from:', 'supplier:', 'vendor:', 'sold by:', 'billed by:',
+        'company:', 'organization:', 'firm:', 'pvt ltd', 'ltd', 'inc',
+        'gstin:', 'pan:', 'tax id:'
+    ]
+
+    has_vendor_info = any(indicator in text_lower for indicator in vendor_indicators)
+    if not has_vendor_info:
+        # Check if there are business-like names (lines that look like company names)
+        business_lines = []
+        for line in lines[:10]:  # Check first 10 lines
+            line_clean = line.strip()
+            if len(line_clean) > 3 and not any(char.isdigit() for char in line_clean[:10]):
+                # Line contains mostly text, could be a business name
+                business_lines.append(line_clean)
+
+        if len(business_lines) == 0:
+            return False, "Document does not contain vendor/supplier information"
+
+    return True, "Document appears to be a valid invoice"
 
 
 api = Blueprint("api", __name__)
@@ -303,7 +390,26 @@ def _process_upload(file_storage):
         or "application/octet-stream"
     )
 
+    # Extract OCR text
     ocr_text, warnings = OcrService().extract_text(upload_path)
+
+    # Validate if this is actually an invoice document
+    is_invoice, validation_reason = _is_invoice_document(ocr_text)
+    if not is_invoice:
+        # Clean up temporary files and return error without storing in DB
+        try:
+            upload_path.unlink(missing_ok=True)
+        except:
+            pass
+
+        return {
+            "id": invoice_id,
+            "original_filename": original_filename,
+            "status": "rejected",
+            "error": f"Not an invoice document: {validation_reason}",
+        }
+
+    # Continue with processing only if it's a valid invoice
     ocr_text_path = current_app.config["TEXT_DIR"] / f"{invoice_id}.txt"
     ocr_text_path.write_text(ocr_text, encoding="utf-8")
 
