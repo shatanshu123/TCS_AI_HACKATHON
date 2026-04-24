@@ -174,10 +174,25 @@ def get_invoice_file(database_path, invoice_id):
 
 
 def serialize_invoice(row, include_paths=True):
+    extraction = json.loads(row["extraction_json"] or "{}")
+    
+    # Calculate overall confidence
+    overall_confidence = 0.0
+    if extraction:
+        confidence_scores = []
+        for field_name, field_data in extraction.items():
+            if isinstance(field_data, dict):
+                conf = field_data.get("confidence", 0.5)
+                conf_value = int(conf * 100) if conf <= 1 else int(conf)
+                confidence_scores.append(conf_value)
+        if confidence_scores:
+            overall_confidence = round(sum(confidence_scores) / len(confidence_scores), 2)
+    
     invoice = {
         "id": row["id"],
         "original_filename": row["original_filename"],
         "status": row["status"],
+        "overall_confidence": overall_confidence,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "database_storage": {
@@ -185,7 +200,7 @@ def serialize_invoice(row, include_paths=True):
             "content_type": row["content_type"] if _row_has(row, "content_type") else None,
             "file_size": row["file_size"] if _row_has(row, "file_size") else None,
         },
-        "extraction": json.loads(row["extraction_json"] or "{}"),
+        "extraction": extraction,
         "validation": json.loads(row["validation_json"] or "{}"),
         "warnings": json.loads(row["warnings_json"] or "[]"),
     }

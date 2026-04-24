@@ -49,6 +49,21 @@ def invoices():
     return jsonify({"invoices": list_invoices(current_app.config["DATABASE_PATH"])})
 
 
+@api.get("/api/invoices/<invoice_id>/overall-confidence")
+def get_invoice_overall_confidence(invoice_id):
+    """Get overall confidence score for an invoice."""
+    invoice = get_invoice(current_app.config["DATABASE_PATH"], invoice_id)
+    if invoice is None:
+        return jsonify({"error": "Invoice not found."}), 404
+    
+    return jsonify({
+        "invoice_id": invoice_id,
+        "original_filename": invoice.get("original_filename"),
+        "overall_confidence": invoice.get("overall_confidence", 0.0),
+        "status": invoice.get("status"),
+    })
+
+
 @api.get("/api/invoices/<invoice_id>")
 def invoice_detail(invoice_id):
     invoice = get_invoice(current_app.config["DATABASE_PATH"], invoice_id)

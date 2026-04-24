@@ -84,6 +84,36 @@ class OcrConfidenceAnalyzer:
         else:
             return "ready"
     
+    def calculate_overall_confidence(self, extraction: Dict[str, Any]) -> float:
+        """Calculate overall invoice confidence score (0-100)."""
+        if not extraction:
+            return 0.0
+        
+        confidence_scores = []
+        
+        for field_name, field_data in extraction.items():
+            if isinstance(field_data, dict):
+                conf = field_data.get("confidence", 0.5)
+                # Normalize to 0-100 if needed
+                conf_value = int(conf * 100) if conf <= 1 else int(conf)
+                confidence_scores.append(conf_value)
+        
+        if not confidence_scores:
+            return 0.0
+        
+        # Return average confidence across all fields
+        overall = sum(confidence_scores) / len(confidence_scores)
+        return round(overall, 2)
+    
+    def _get_status(self, high: int, medium: int, low: int, total: int) -> str:
+        """Determine overall extraction status."""
+        if low > 0:
+            return "needs_review"
+        elif medium > total * 0.3:
+            return "review_recommended"
+        else:
+            return "ready"
+    
     def generate_html_report(self, extraction: Dict[str, Any]) -> str:
         """Generate simple HTML report."""
         analysis = self.analyze_extraction_confidence(extraction)
