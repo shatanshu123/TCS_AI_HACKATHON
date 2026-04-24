@@ -46,7 +46,39 @@ def upload_invoices():
 
 @api.get("/api/invoices")
 def invoices():
-    return jsonify({"invoices": list_invoices(current_app.config["DATABASE_PATH"])})
+    """Get list of invoices with overall confidence scores."""
+    invoice_list = list_invoices(current_app.config["DATABASE_PATH"])
+    
+    # Add confidence score to each invoice
+    analyzer = OcrConfidenceAnalyzer()
+    for invoice in invoice_list:
+        extraction = invoice.get("extraction", {})
+        if extraction:
+            # Calculate overall confidence based on extraction quality
+            confidence_analysis = analyzer.analyze_extraction_confidence(extraction)
+            summary = confidence_analysis.get("summary", {})
+            
+            # Overall confidence: weighted based on field confidence distribution
+            avg_confidence = summary.get("average_confidence", 0)
+            
+            # Boost confidence if most fields are high confidence
+            high_conf = summary.get("high_confidence", 0)
+            total = summary.get("total_fields", 1)
+            high_conf_ratio = (high_conf / total * 100) if total > 0 else 0
+            
+            # Weighted calculation: 60% average confidence, 40% high confidence ratio
+            overall_confidence = int((avg_confidence * 0.6) + (high_conf_ratio * 0.4))
+            
+            # Cap at reasonable ranges
+            overall_confidence = min(max(overall_confidence, 0), 100)
+        else:
+            overall_confidence = 0
+        
+        invoice["overall_confidence"] = overall_confidence
+        invoice["confidence_level"] = analyzer._get_confidence_level(overall_confidence)["name"]
+    
+    return jsonify({"invoices": invoice_list, "count": len(invoice_list)})
+
 
 
 @api.get("/api/invoices/<invoice_id>/overall-confidence")
