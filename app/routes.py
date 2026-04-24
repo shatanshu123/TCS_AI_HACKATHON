@@ -15,6 +15,7 @@ from app.services.llm_client import (
     LlmPayloadRejected,
 )
 from app.services.ocr import OcrService
+from app.services.ocr_confidence import OcrConfidenceAnalyzer
 from app.services.pii_masker import PiiMasker
 from app.services.validator import InvoiceValidator
 from app.storage import get_invoice, get_invoice_file, insert_invoice, list_invoices, update_invoice
@@ -97,6 +98,140 @@ def review_invoice(invoice_id):
         validation_json=json.dumps(validation),
     )
     return jsonify(updated)
+
+
+@api.get("/api/invoices/<invoice_id>/confidence")
+def get_extraction_confidence(invoice_id):
+    """Get extraction field confidence analysis."""
+    invoice = get_invoice(current_app.config["DATABASE_PATH"], invoice_id)
+    if invoice is None:
+        return jsonify({"error": "Invoice not found."}), 404
+    
+    extraction = invoice.get("extraction", {})
+    
+    analyzer = OcrConfidenceAnalyzer()
+    analysis = analyzer.analyze_extraction_confidence(extraction)
+    
+    return jsonify({
+        "invoice_id": invoice_id,
+        "original_filename": invoice.get("original_filename"),
+        "confidence_analysis": analysis,
+    })
+
+
+@api.get("/api/invoices/<invoice_id>/confidence/report")
+def get_confidence_report(invoice_id):
+    """Get HTML confidence report."""
+    invoice = get_invoice(current_app.config["DATABASE_PATH"], invoice_id)
+    if invoice is None:
+        return jsonify({"error": "Invoice not found."}), 404
+    
+    extraction = invoice.get("extraction", {})
+    
+    analyzer = OcrConfidenceAnalyzer()
+    html_report = analyzer.generate_html_report(extraction)
+    
+    return jsonify({
+        "invoice_id": invoice_id,
+        "original_filename": invoice.get("original_filename"),
+        "html_report": html_report,
+    })
+
+
+@api.get("/api/invoices/<invoice_id>/ocr/confidence")
+def get_ocr_confidence(invoice_id):
+    """Get OCR text with token-level confidence scores."""
+    invoice = get_invoice(current_app.config["DATABASE_PATH"], invoice_id)
+    if invoice is None:
+        return jsonify({"error": "Invoice not found."}), 404
+    
+    upload_path = invoice.get("upload_path")
+    if not upload_path:
+        return jsonify({"error": "Invoice file path not available."}), 404
+    
+    analyzer = OcrConfidenceAnalyzer()
+    result = analyzer.analyze_extraction_confidence(invoice.get("extraction", {}))
+    
+    return jsonify({
+        "invoice_id": invoice_id,
+        "original_filename": invoice.get("original_filename"),
+        "ocr": result
+    })
+
+
+@api.get("/api/invoices/<invoice_id>/ocr/confidence/report")
+def get_ocr_confidence_report(invoice_id):
+    """Get comprehensive OCR confidence analysis report."""
+    invoice = get_invoice(current_app.config["DATABASE_PATH"], invoice_id)
+    if invoice is None:
+        return jsonify({"error": "Invoice not found."}), 404
+    
+    extraction = invoice.get("extraction", {})
+    
+    analyzer = OcrConfidenceAnalyzer()
+    analysis = analyzer.analyze_extraction_confidence(extraction)
+    
+    return jsonify({
+        "invoice_id": invoice_id,
+        "original_filename": invoice.get("original_filename"),
+        "report": analysis
+    })
+
+
+@api.get("/api/invoices/<invoice_id>/ocr/confidence/highlighted")
+def get_ocr_highlighted(invoice_id):
+    """Get OCR text as HTML with low-confidence tokens highlighted."""
+    invoice = get_invoice(current_app.config["DATABASE_PATH"], invoice_id)
+    if invoice is None:
+        return jsonify({"error": "Invoice not found."}), 404
+    
+    extraction = invoice.get("extraction", {})
+    
+    analyzer = OcrConfidenceAnalyzer()
+    html_report = analyzer.generate_html_report(extraction)
+    analysis = analyzer.analyze_extraction_confidence(extraction)
+    
+    return jsonify({
+        "invoice_id": invoice_id,
+        "original_filename": invoice.get("original_filename"),
+        "html": html_report,
+        "statistics": analysis["summary"],
+        "warnings": []
+    })
+
+
+@api.get("/api/invoices/<invoice_id>/confidence/ui")
+def get_ui_confidence_view(invoice_id):
+    """Get comprehensive UI confidence visualization combining OCR and extraction."""
+    invoice = get_invoice(current_app.config["DATABASE_PATH"], invoice_id)
+    if invoice is None:
+        return jsonify({"error": "Invoice not found."}), 404
+    
+    extraction = invoice.get("extraction", {})
+    
+    # Generate UI confidence view
+    analyzer = OcrConfidenceAnalyzer()
+    analysis = analyzer.analyze_extraction_confidence(extraction)
+    html_report = analyzer.generate_html_report(extraction)
+    
+    return jsonify({
+        "invoice_id": invoice_id,
+        "original_filename": invoice.get("original_filename"),
+        "widget_data": {
+            "fields": analysis["fields"],
+            "summary": analysis["summary"],
+            "html_report": html_report,
+            "ui_hints": {
+                "color_scheme": {
+                    "high": "#4CAF50",
+                    "medium": "#FFC107",
+                    "low": "#F44336",
+                },
+                "show_confidence_percentages": True,
+                "enable_manual_override": True,
+            }
+        }
+    })
 
 
 def _process_upload(file_storage):

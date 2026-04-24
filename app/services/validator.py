@@ -9,7 +9,21 @@ class InvoiceValidator:
         warnings = []
 
         for field in self.REQUIRED_FIELDS:
-            if not extraction.get(field):
+            if field not in extraction:
+                errors.append({"field": field, "message": "Required field is missing."})
+                continue
+
+            field_value = extraction.get(field)
+            if not self._field_annotations_valid(field_value):
+                errors.append(
+                    {
+                        "field": field,
+                        "message": "Required field must be annotated with value and confidence.",
+                    }
+                )
+                continue
+
+            if self._field_value(field_value) is None:
                 errors.append({"field": field, "message": "Required field is missing."})
 
         amount = self._field_value(extraction.get("total_amount"))
@@ -29,6 +43,17 @@ class InvoiceValidator:
             "errors": errors,
             "warnings": warnings,
         }
+
+    def _field_annotations_valid(self, field):
+        if not isinstance(field, dict):
+            return False
+        if "value" not in field or "confidence" not in field:
+            return False
+        try:
+            confidence = float(field.get("confidence"))
+        except (TypeError, ValueError):
+            return False
+        return 0.0 <= confidence <= 1.0
 
     def _field_value(self, field, key="value"):
         if isinstance(field, dict):
