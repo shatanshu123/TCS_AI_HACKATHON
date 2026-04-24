@@ -1,0 +1,74 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+5 0 obj
+<< /Length 813 >>
+stream
+BT
+/F1 10 Tf
+50 760 Td
+13 TL
+(Northstar Facilities Services) Tj
+T*
+(Tax Invoice) Tj
+T*
+(Vendor GSTIN: 27PQRSX9876L1Z8) Tj
+T*
+(Contact Person: Kavita Iyer, +91 9123456789, kavita.iyer@example.net) Tj
+T*
+(Address: Floor 3, Tower B, East Park Road, Pune, Maharashtra 411001) Tj
+T*
+() Tj
+T*
+(Bill To: Neha Kapoor, 77 Accounts Lane, Chennai, Tamil Nadu 600001) Tj
+T*
+() Tj
+T*
+(Invoice No: FAC-2026-019) Tj
+T*
+(Invoice Date: 19/04/2026) Tj
+T*
+(Due Date: 05/05/2026) Tj
+T*
+() Tj
+T*
+(Description                         Qty      Rate        Amount) Tj
+T*
+(Office deep cleaning                  1   5,000.00     5,000.00) Tj
+T*
+(Pantry maintenance                    1   2,500.00     2,500.00) Tj
+T*
+() Tj
+T*
+(Subtotal: INR 7,500.00) Tj
+T*
+(Tax: INR 1,350.00) Tj
+T*
+(Amount payable: Not printed on source invoice) Tj
+T*
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000309 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1173
+%%EOF

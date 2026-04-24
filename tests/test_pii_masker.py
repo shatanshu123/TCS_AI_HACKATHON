@@ -38,3 +38,24 @@ def test_rejects_unmasked_payload_for_llm():
 
 def test_allows_masked_payload_for_llm():
     PiiMasker().assert_masked_for_llm("Email [EMAIL_1] Total INR 20")
+
+
+def test_masks_unlabeled_address_lines():
+    text = """
+    FROM
+    Creative Solutions LLC
+    123 Business Avenue, Suite 100
+    San Francisco, CA 94105
+    BILL TO
+    Global Tech Industries
+    789 Innovation Drive
+    Seattle, WA 98101
+    """
+
+    result = PiiMasker().mask(text)
+
+    assert "123 Business Avenue" not in result.masked_text
+    assert "San Francisco" not in result.masked_text
+    assert "789 Innovation Drive" not in result.masked_text
+    assert "Seattle" not in result.masked_text
+    assert "[ADDRESS_LINE_1]" in result.masked_text

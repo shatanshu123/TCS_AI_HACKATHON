@@ -1,0 +1,62 @@
+{
+  "dataset": "synthetic-invoice-samples-v1",
+  "privacy_note": "All PII-like values are fake and intended to verify masking before LLM use.",
+  "files": [
+    {
+      "file": "invoices/invoice-001-standard.pdf",
+      "expected_status": "completed",
+      "expected_fields": {
+        "vendor": "Greenfield Office Supplies Pvt Ltd",
+        "invoice_number": "INV-2026-001",
+        "invoice_date": "2026-04-20",
+        "due_date": "2026-04-30",
+        "currency": "INR",
+        "total_amount": 14160.0,
+        "tax_id_token": "[GSTIN_1]"
+      },
+      "expected_mask_kinds": ["ADDRESS_LINE", "BANK_ACCOUNT", "CONTACT_LINE", "GSTIN", "IFSC", "PAN", "UPI"]
+    },
+    {
+      "file": "invoices/invoice-002-missing-total.pdf",
+      "expected_status": "needs_review",
+      "expected_fields": {
+        "vendor": "Northstar Facilities Services",
+        "invoice_number": "FAC-2026-019",
+        "invoice_date": "2026-04-19",
+        "due_date": "2026-05-05",
+        "currency": "INR",
+        "total_amount": null,
+        "tax_id_token": "[GSTIN_1]"
+      },
+      "expected_mask_kinds": ["ADDRESS_LINE", "CONTACT_LINE", "GSTIN"]
+    },
+    {
+      "file": "invoices/invoice-003-usd-services.pdf",
+      "expected_status": "completed",
+      "expected_fields": {
+        "vendor": "Blue Ridge Software LLC",
+        "invoice_number": "US-2026-044",
+        "invoice_date": "2026-04-18",
+        "due_date": "2026-05-18",
+        "currency": "USD",
+        "total_amount": 1150.0,
+        "tax_id_token": null
+      },
+      "expected_mask_kinds": ["ADDRESS_LINE", "BANK_ACCOUNT", "CONTACT_LINE"]
+    },
+    {
+      "file": "invoices/invoice-004-noisy-ocr.pdf",
+      "expected_status": "needs_review",
+      "expected_fields": {
+        "vendor": "Metro Industrial Traders Pvt Ltd",
+        "invoice_number": "MIT/26/0098",
+        "invoice_date": "2026-04-21",
+        "due_date": "2026-05-01",
+        "currency": "INR",
+        "total_amount": null,
+        "tax_id_token": "[GSTIN_1]"
+      },
+      "expected_mask_kinds": ["BANK_ACCOUNT", "CONTACT_LINE", "GSTIN", "IFSC", "PAN"]
+    }
+  ]
+}

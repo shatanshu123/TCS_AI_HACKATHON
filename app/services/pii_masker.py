@@ -36,7 +36,11 @@ class PiiMasker:
         r"(?im)^\s*(?:contact person|attention|attn|prepared for|bill to|ship to|deliver to|customer)\s*:.*$"
     )
     ADDRESS_LINE = re.compile(
-        r"(?im)^.*\b(?:address|street|st\.|road|rd\.|lane|sector|phase|floor|tower|pin|pincode|zip)\b.*$"
+        r"(?im)^.*\b(?:address|street|st\.|road|rd\.|lane|sector|phase|floor|tower|"
+        r"pin|pincode|zip|avenue|ave\.|suite|drive|dr\.|plaza|boulevard|blvd\.)\b.*$"
+    )
+    CITY_STATE_ZIP_LINE = re.compile(
+        r"(?im)^.*,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?\s*$"
     )
     MASK_TOKEN = re.compile(r"\[[A-Z_]+_\d+\]")
 
@@ -86,6 +90,7 @@ class PiiMasker:
             ("PHONE", self.PHONE),
             ("CONTACT_LINE", self.CONTACT_LINE),
             ("ADDRESS_LINE", self.ADDRESS_LINE),
+            ("ADDRESS_LINE", self.CITY_STATE_ZIP_LINE),
         ]
 
         for kind, pattern in detectors:

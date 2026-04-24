@@ -1,4 +1,4 @@
-import io
+from pathlib import Path
 
 from app import create_app
 from app.config import Config
@@ -13,30 +13,65 @@ class TestConfig(Config):
     DATABASE_PATH = STORAGE_DIR / "invoices.sqlite3"
 
 
-def test_upload_text_invoice_masks_pii_and_extracts_fields():
+def test_upload_pdf_invoice_masks_pii_and_extracts_fields():
     app = create_app(TestConfig)
     client = app.test_client()
-    invoice_text = b"""
-    Acme Office Supplies Pvt Ltd
-    Tax Invoice
-    Invoice No: INV-2025-001
-    Invoice Date: 20/04/2026
-    Vendor GSTIN: 29ABCDE1234F1Z5
-    Contact Person: Anita Sharma +91 9876543210 anita@example.com
-    Total Amount: INR 12,300.50
-    """
+    sample_pdf = Config.BASE_DIR / "sample-dataset" / "invoices" / "invoice-001-standard.pdf"
 
-    response = client.post(
-        "/api/invoices",
-        data={"files": (io.BytesIO(invoice_text), "invoice.txt")},
-        content_type="multipart/form-data",
-    )
+    with sample_pdf.open("rb") as invoice_file:
+        response = client.post(
+            "/api/invoices",
+            data={"files": (invoice_file, "invoice-001-standard.pdf")},
+            content_type="multipart/form-data",
+        )
 
     assert response.status_code == 201
     payload = response.get_json()
     invoice = payload["invoices"][0]
     assert invoice["pii"]["masked"] is True
-    assert invoice["extraction"]["invoice_number"]["value"] == "INV-2025-001"
-    assert invoice["extraction"]["total_amount"]["value"] == 12300.50
+    assert invoice["database_storage"]["invoice_blob_stored"] is True
+    assert invoice["database_storage"]["content_type"] == "application/pdf"
+    assert invoice["database_storage"]["file_size"] == sample_pdf.stat().st_size
+    assert invoice["extraction"]["invoice_number"]["value"] == "INV-2026-001"
+    assert invoice["extraction"]["total_amount"]["value"] == 14160.00
     assert invoice["validation"]["valid"] is True
 
+    file_response = client.get(f"/api/invoices/{invoice['id']}/file")
+    assert file_response.status_code == 200
+    assert file_response.mimetype == "application/pdf"
+    assert file_response.data == sample_pdf.read_bytes()
+
+
+def test_rejects_text_invoice_uploads():
+    app = create_app(TestConfig)
+    client = app.test_client()
+
+    with Path(__file__).open("rb") as invoice_file:
+        response = client.post(
+            "/api/invoices",
+            data={"files": (invoice_file, "invoice.txt")},
+            content_type="multipart/form-data",
+        )
+
+    assert response.status_code == 201
+    invoice = response.get_json()["invoices"][0]
+    assert invoice["status"] == "rejected"
+    assert "Unsupported file type" in invoice["error"]
+
+
+def test_missing_total_pdf_needs_review():
+    app = create_app(TestConfig)
+    client = app.test_client()
+    sample_pdf = Config.BASE_DIR / "sample-dataset" / "invoices" / "invoice-002-missing-total.pdf"
+
+    with sample_pdf.open("rb") as invoice_file:
+        response = client.post(
+            "/api/invoices",
+            data={"files": (invoice_file, "invoice-002-missing-total.pdf")},
+            content_type="multipart/form-data",
+        )
+
+    assert response.status_code == 201
+    invoice = response.get_json()["invoices"][0]
+    assert invoice["status"] == "needs_review"
+    assert any(error["field"] == "total_amount" for error in invoice["validation"]["errors"])

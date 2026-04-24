@@ -1,0 +1,70 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+5 0 obj
+<< /Length 737 >>
+stream
+BT
+/F1 10 Tf
+50 760 Td
+13 TL
+(Blue Ridge Software LLC) Tj
+T*
+(Invoice) Tj
+T*
+(Contact Person: Maya Stone, +1 415 555 0198, billing@blueridge.example) Tj
+T*
+(Address: 210 Pine Street, Suite 400, San Francisco, CA 94104) Tj
+T*
+(Bank Account Number: 555666777888) Tj
+T*
+() Tj
+T*
+(Prepared For: Daniel Lee, 55 Corporate Plaza, New York, NY 10005) Tj
+T*
+() Tj
+T*
+(Invoice Number: US-2026-044) Tj
+T*
+(Invoice Date: 2026-04-18) Tj
+T*
+(Payment Due: 2026-05-18) Tj
+T*
+() Tj
+T*
+(Description                         Qty      Rate        Amount) Tj
+T*
+(Workflow automation support           6    USD 150.00   USD 900.00) Tj
+T*
+(Monthly hosting                       1    USD 250.00   USD 250.00) Tj
+T*
+() Tj
+T*
+(Invoice Total: USD 1,150.00) Tj
+T*
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000309 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1097
+%%EOF

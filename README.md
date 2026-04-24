@@ -2,7 +2,7 @@
 
 Flask backend for the "Technology Back Office Automated Invoice Processing Assistant" problem statement.
 
-The system accepts invoice uploads, extracts text locally, masks personal information before any LLM call, extracts key invoice fields, validates them, and stores all artifacts on the local filesystem plus SQLite.
+The system accepts invoice uploads, extracts text locally, masks personal information before any LLM call, extracts key invoice fields, validates them, and stores invoice records in SQLite. Uploaded PDF/image bytes are stored in SQLite as BLOBs; local file copies are kept only to support OCR and reviewer artifacts.
 
 ## Privacy Boundary
 
@@ -10,12 +10,12 @@ Raw invoice data never goes directly to an LLM.
 
 Pipeline:
 
-1. Upload invoice to local storage.
+1. Upload invoice to SQLite and a local OCR working copy.
 2. Extract OCR/text locally.
 3. Mask PII and sensitive identifiers into deterministic tokens.
 4. Run a leakage guard on the masked payload.
 5. Send only masked text to the extraction client.
-6. Store token mapping locally for reviewer/audit use.
+6. Store the invoice record, validation results, and original invoice BLOB in SQLite.
 
 Masked examples:
 
@@ -112,15 +112,10 @@ GET /health
 POST /api/invoices
 Content-Type: multipart/form-data
 
-files=<one or more pdf/png/jpg/txt invoices>
+files=<one or more pdf/png/jpg/jpeg/tif/tiff invoices>
 ```
 
-For local testing without OCR binaries, send a text invoice:
-
-```powershell
-curl.exe -X POST http://127.0.0.1:5000/api/invoices `
-  -F "files=@sample-invoice.txt"
-```
+Invoice uploads are limited to PDF or image files.
 
 ### List Invoices
 
@@ -132,6 +127,14 @@ GET /api/invoices
 
 ```http
 GET /api/invoices/<invoice_id>
+```
+
+### Download Stored Invoice File
+
+Streams the original PDF/image from SQLite:
+
+```http
+GET /api/invoices/<invoice_id>/file
 ```
 
 ### Reviewer Corrections

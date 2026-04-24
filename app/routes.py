@@ -1,8 +1,10 @@
 import json
+import mimetypes
 import uuid
+from io import BytesIO
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
 from app.services.extractor import InvoiceExtractor
@@ -15,7 +17,7 @@ from app.services.llm_client import (
 from app.services.ocr import OcrService
 from app.services.pii_masker import PiiMasker
 from app.services.validator import InvoiceValidator
-from app.storage import get_invoice, insert_invoice, list_invoices, update_invoice
+from app.storage import get_invoice, get_invoice_file, insert_invoice, list_invoices, update_invoice
 
 
 api = Blueprint("api", __name__)
@@ -52,6 +54,20 @@ def invoice_detail(invoice_id):
     if invoice is None:
         return jsonify({"error": "Invoice not found."}), 404
     return jsonify(invoice)
+
+
+@api.get("/api/invoices/<invoice_id>/file")
+def invoice_file(invoice_id):
+    stored_file = get_invoice_file(current_app.config["DATABASE_PATH"], invoice_id)
+    if stored_file is None:
+        return jsonify({"error": "Invoice file not found."}), 404
+
+    return send_file(
+        BytesIO(stored_file["content"]),
+        mimetype=stored_file["content_type"],
+        as_attachment=True,
+        download_name=stored_file["filename"],
+    )
 
 
 @api.patch("/api/invoices/<invoice_id>/review")
@@ -98,6 +114,12 @@ def _process_upload(file_storage):
     stored_filename = f"{invoice_id}-{original_filename}"
     upload_path = current_app.config["UPLOAD_DIR"] / stored_filename
     file_storage.save(upload_path)
+    file_blob = upload_path.read_bytes()
+    content_type = (
+        file_storage.mimetype
+        or mimetypes.guess_type(original_filename)[0]
+        or "application/octet-stream"
+    )
 
     ocr_text, warnings = OcrService().extract_text(upload_path)
     ocr_text_path = current_app.config["TEXT_DIR"] / f"{invoice_id}.txt"
@@ -142,6 +164,9 @@ def _process_upload(file_storage):
             "ocr_text_path": str(ocr_text_path),
             "masked_text_path": str(masked_text_path),
             "pii_map_path": str(pii_map_path),
+            "file_blob": file_blob,
+            "content_type": content_type,
+            "file_size": len(file_blob),
             "extraction": extraction,
             "validation": validation,
             "warnings": warnings,

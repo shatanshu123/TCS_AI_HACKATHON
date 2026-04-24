@@ -30,12 +30,27 @@ def init_db(database_path):
                 ocr_text_path TEXT,
                 masked_text_path TEXT,
                 pii_map_path TEXT,
+                file_blob BLOB,
+                content_type TEXT,
+                file_size INTEGER,
                 extraction_json TEXT,
                 validation_json TEXT,
                 warnings_json TEXT
             )
             """
         )
+        _ensure_column(connection, "invoices", "file_blob", "BLOB")
+        _ensure_column(connection, "invoices", "content_type", "TEXT")
+        _ensure_column(connection, "invoices", "file_size", "INTEGER")
+
+
+def _ensure_column(connection, table_name, column_name, column_type):
+    columns = {
+        row["name"]
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    if column_name not in columns:
+        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
 
 def insert_invoice(database_path, invoice):
@@ -51,6 +66,9 @@ def insert_invoice(database_path, invoice):
         "ocr_text_path": invoice.get("ocr_text_path"),
         "masked_text_path": invoice.get("masked_text_path"),
         "pii_map_path": invoice.get("pii_map_path"),
+        "file_blob": invoice.get("file_blob"),
+        "content_type": invoice.get("content_type"),
+        "file_size": invoice.get("file_size"),
         "extraction_json": json.dumps(invoice.get("extraction", {})),
         "validation_json": json.dumps(invoice.get("validation", {})),
         "warnings_json": json.dumps(invoice.get("warnings", [])),
@@ -62,11 +80,13 @@ def insert_invoice(database_path, invoice):
             INSERT INTO invoices (
                 id, original_filename, stored_filename, status, created_at, updated_at,
                 upload_path, ocr_text_path, masked_text_path, pii_map_path,
+                file_blob, content_type, file_size,
                 extraction_json, validation_json, warnings_json
             )
             VALUES (
                 :id, :original_filename, :stored_filename, :status, :created_at, :updated_at,
                 :upload_path, :ocr_text_path, :masked_text_path, :pii_map_path,
+                :file_blob, :content_type, :file_size,
                 :extraction_json, :validation_json, :warnings_json
             )
             """,
@@ -113,6 +133,7 @@ def list_invoices(database_path):
         rows = connection.execute(
             """
             SELECT id, original_filename, status, created_at, updated_at,
+                   content_type, file_size,
                    extraction_json, validation_json, warnings_json
             FROM invoices
             ORDER BY created_at DESC
@@ -132,6 +153,26 @@ def get_invoice(database_path, invoice_id):
     return serialize_invoice(row)
 
 
+def get_invoice_file(database_path, invoice_id):
+    with connect(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT original_filename, content_type, file_size, file_blob
+            FROM invoices
+            WHERE id = ?
+            """,
+            (invoice_id,),
+        ).fetchone()
+    if row is None or row["file_blob"] is None:
+        return None
+    return {
+        "filename": row["original_filename"],
+        "content_type": row["content_type"] or "application/octet-stream",
+        "file_size": row["file_size"],
+        "content": row["file_blob"],
+    }
+
+
 def serialize_invoice(row, include_paths=True):
     invoice = {
         "id": row["id"],
@@ -139,6 +180,11 @@ def serialize_invoice(row, include_paths=True):
         "status": row["status"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        "database_storage": {
+            "invoice_blob_stored": _row_has(row, "file_size") and row["file_size"] is not None,
+            "content_type": row["content_type"] if _row_has(row, "content_type") else None,
+            "file_size": row["file_size"] if _row_has(row, "file_size") else None,
+        },
         "extraction": json.loads(row["extraction_json"] or "{}"),
         "validation": json.loads(row["validation_json"] or "{}"),
         "warnings": json.loads(row["warnings_json"] or "[]"),
@@ -155,3 +201,6 @@ def serialize_invoice(row, include_paths=True):
         )
     return invoice
 
+
+def _row_has(row, key):
+    return key in row.keys()

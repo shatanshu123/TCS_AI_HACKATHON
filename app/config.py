@@ -23,7 +23,7 @@ class Config:
     DEBUG = os.getenv("FLASK_DEBUG", "0") == "1"
 
     MAX_CONTENT_LENGTH = 25 * 1024 * 1024
-    ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "tif", "tiff", "txt"}
+    ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "tif", "tiff"}
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "local").lower()
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
     GENAILAB_BASE_URL = os.getenv("GENAILAB_BASE_URL", "https://genailab.tcs.in")
