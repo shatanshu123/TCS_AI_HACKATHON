@@ -105,15 +105,6 @@ class OcrConfidenceAnalyzer:
         overall = sum(confidence_scores) / len(confidence_scores)
         return round(overall, 2)
     
-    def _get_status(self, high: int, medium: int, low: int, total: int) -> str:
-        """Determine overall extraction status."""
-        if low > 0:
-            return "needs_review"
-        elif medium > total * 0.3:
-            return "review_recommended"
-        else:
-            return "ready"
-    
     def generate_html_report(self, extraction: Dict[str, Any]) -> str:
         """Generate simple HTML report."""
         analysis = self.analyze_extraction_confidence(extraction)
@@ -132,7 +123,7 @@ class OcrConfidenceAnalyzer:
         for field in analysis["fields"]:
             conf = field["confidence"]
             level = field["level"]
-            value_preview = (field["value"] or "")[:30]
+            value_preview = (str(field.get("value") or ""))[:30]
             
             html.append('<tr>')
             html.append(f'<td style="border: 1px solid #ddd; padding: 10px;">{field["field"]}</td>')

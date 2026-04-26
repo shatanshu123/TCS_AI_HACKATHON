@@ -195,6 +195,8 @@ def serialize_invoice(row, include_paths=True):
         "overall_confidence": overall_confidence,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        "content_type": row["content_type"] if _row_has(row, "content_type") else None,
+        "file_size": row["file_size"] if _row_has(row, "file_size") else None,
         "database_storage": {
             "invoice_blob_stored": _row_has(row, "file_size") and row["file_size"] is not None,
             "content_type": row["content_type"] if _row_has(row, "content_type") else None,

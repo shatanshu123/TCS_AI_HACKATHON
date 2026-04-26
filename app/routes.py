@@ -459,6 +459,7 @@ def get_ui_confidence_view(invoice_id):
         return jsonify({"error": "Invoice not found."}), 404
     
     extraction = invoice.get("extraction", {})
+    validation = invoice.get("validation", {})
     
     # Generate UI confidence view
     analyzer = OcrConfidenceAnalyzer()
@@ -468,6 +469,7 @@ def get_ui_confidence_view(invoice_id):
     return jsonify({
         "invoice_id": invoice_id,
         "original_filename": invoice.get("original_filename"),
+        "validation": validation,
         "widget_data": {
             "fields": analysis["fields"],
             "summary": analysis["summary"],
