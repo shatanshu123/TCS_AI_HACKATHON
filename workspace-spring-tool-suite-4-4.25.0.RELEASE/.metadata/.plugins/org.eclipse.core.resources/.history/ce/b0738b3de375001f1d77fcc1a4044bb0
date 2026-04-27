@@ -1,5 +1,0 @@
-package com.exam.examserver.services.serviceImpl;
-
-public class UserServiceImpl {
-
-}
